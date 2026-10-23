@@ -71,8 +71,10 @@ packages = [
     # GNOME apps and integration from the factory (#263, #391). Flatpak-first:
     # gnome-system-monitor is deliberately absent because Mission Center is
     # the shipped Flatpak (contracts/bluefin-desktop.toml).
-    # Help viewer: yelp-libs and yelp-xsl arrive as dependencies.
-    "yelp",
+    # Help content: Bluefin's [excluded] removes the yelp viewer itself but its
+    # image keeps the libraries, stylesheets and gnome-user-docs.
+    "yelp-libs",
+    "yelp-xsl",
     "gnome-user-docs",
     "gnome-tour",
     # Settings integration: RDP screen sharing, colour profiles, and the
@@ -691,7 +693,8 @@ packages = [
     "gnome-tour",
     "gnome-user-docs",
     "gnome-user-share",
-    "yelp",
+    "yelp-libs",
+    "yelp-xsl",
 ]
 parity = [
     "wpa_supplicant",

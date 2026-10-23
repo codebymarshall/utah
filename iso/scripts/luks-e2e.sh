@@ -986,14 +986,15 @@ echo "  session type: ${session_type:-unknown}"
 sleep 10   # let the shell finish drawing before the screenshot
 shot installed-desktop "${MONITOR_INSTALLED}"
 
-# gnome-tour is Bluefin's first-login welcome window. It opens over the desktop
-# at a variable delay after login, and the clean desktop shot above is what
-# documents it when it is already up. Press Skip (the focused button) whenever
-# it is running, or the dialog covers the terminal and fastfetch is unreadable
-# to OCR, as it would be for a user.
-skip_gnome_tour() {
-    if ssh_target 'pgrep -u "$(id -u)" -x gnome-tour >/dev/null'; then
-        echo "  gnome-tour is showing over the desktop; pressing Skip"
+# GNOME Shell shows its own "Welcome to Bluefin / Skip / Take Tour" dialog on
+# first login whenever gnome-tour is installed (it launches org.gnome.Tour from
+# "Take Tour"). It is a Shell modal, not a process, and it appears at a variable
+# delay after login. The clean desktop shot above documents it when it is
+# already up. When OCR of a later screenshot reads it, press Skip (the focused
+# button) so it stops covering the terminal, as a user would.
+skip_welcome_dialog() {
+    if grep -qi "take tour" "$1" 2>/dev/null; then
+        echo "  GNOME Shell welcome dialog is showing; pressing Skip"
         monitor "${MONITOR_INSTALLED}" "sendkey ret" || true
         sleep 3
     fi
@@ -1011,7 +1012,6 @@ if [[ "${UTAH_E2E_REQUIRE_FASTFETCH:-0}" == 1 ]]; then
     command -v tesseract >/dev/null || fail "tesseract is required for CI screenshot verification"
     fastfetch_seen=0
     for _ in $(seq 1 24); do
-        skip_gnome_tour
         shot installed-fastfetch "${MONITOR_INSTALLED}"
         if [[ -s "${SHOTS}/installed-fastfetch.png" ]]; then
             # Tesseract misreads identical pixels differently between runs
@@ -1024,6 +1024,7 @@ if [[ "${UTAH_E2E_REQUIRE_FASTFETCH:-0}" == 1 ]]; then
                     break 2
                 fi
             done
+            skip_welcome_dialog "${WORK}/fastfetch-ocr.txt"
         fi
         sleep 5
     done

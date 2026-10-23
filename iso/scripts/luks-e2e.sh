@@ -986,20 +986,18 @@ echo "  session type: ${session_type:-unknown}"
 sleep 10   # let the shell finish drawing before the screenshot
 shot installed-desktop "${MONITOR_INSTALLED}"
 
-# gnome-tour is Bluefin's first-login welcome window. It opens over the desktop,
-# and the clean desktop shot above is what documents that it did. Press Skip
-# (the focused button) before the terminal opens, or the dialog covers the
-# terminal and fastfetch is unreadable to OCR, as a user would see it too.
-if ssh_target 'pgrep -u "$(id -u)" -x gnome-tour >/dev/null'; then
-    echo "  gnome-tour is showing over the desktop; pressing Skip"
-    monitor "${MONITOR_INSTALLED}" "sendkey ret" || true
-    sleep 3
+# gnome-tour is Bluefin's first-login welcome window. It opens over the desktop
+# at a variable delay after login, and the clean desktop shot above is what
+# documents it when it is already up. Press Skip (the focused button) whenever
+# it is running, or the dialog covers the terminal and fastfetch is unreadable
+# to OCR, as it would be for a user.
+skip_gnome_tour() {
     if ssh_target 'pgrep -u "$(id -u)" -x gnome-tour >/dev/null'; then
-        fail "gnome-tour is still running after Skip"
+        echo "  gnome-tour is showing over the desktop; pressing Skip"
+        monitor "${MONITOR_INSTALLED}" "sendkey ret" || true
+        sleep 3
     fi
-else
-    echo "  gnome-tour is not running; nothing to skip"
-fi
+}
 
 # Open a terminal on the desktop and leave fastfetch on screen. This is the
 # shot a human actually reads: it names the OS, the kernel and the desktop
@@ -1013,6 +1011,7 @@ if [[ "${UTAH_E2E_REQUIRE_FASTFETCH:-0}" == 1 ]]; then
     command -v tesseract >/dev/null || fail "tesseract is required for CI screenshot verification"
     fastfetch_seen=0
     for _ in $(seq 1 24); do
+        skip_gnome_tour
         shot installed-fastfetch "${MONITOR_INSTALLED}"
         if [[ -s "${SHOTS}/installed-fastfetch.png" ]]; then
             # Tesseract misreads identical pixels differently between runs

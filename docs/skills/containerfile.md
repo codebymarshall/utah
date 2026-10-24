@@ -124,7 +124,7 @@ deciding what is worth changing.
 | Stage | main | nvidia-gaming |
 | --- | ---: | ---: |
 | Runner setup (podman, btrfs storage) | 2 min | 2 min |
-| Pull base and the three source stages | 15 s | 1 min |
+| Pull base and the four source stages | 15 s | 1 min |
 | Eighteen one-file COPY layers (before this was fixed) | 3 min 10 s | 3 min 40 s |
 | Package transaction | 4 min | 4 min 20 s |
 | Extensions, services, branding, contract check | 55 s | 55 s |
@@ -285,9 +285,9 @@ just check
 grep -c '^COPY\|^RUN' Containerfile
 ```
 
-The count stays at its current value (17 as of 2026-09-26: 13 for the shipped
-image, plus the four `v4l2loopback` builder-stage instructions, which never
-reach it)
+The count stays at its current value (22 as of 2026-10-24: 14 for the shipped
+image, plus the four `v4l2loopback` and four `artwork` builder-stage
+instructions, which never reach it)
 unless the change justifies a new layer against the timings table above.
 Removing the package repository COPY dropped it from 13 to 12; a later change
 must earn its layer.

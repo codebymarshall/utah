@@ -100,6 +100,42 @@ for logo in fedora_logo_med.png fedora_whitelogo_med.png fedora-logo.png system-
     install -Dm0644 "/tmp/utah-bluefin-pixmaps/${logo}" "/usr/share/pixmaps/${logo}"
 done
 
+# The greeter logo is artwork's Bluefin wordmark (dark variant: white lettering
+# for the dark login screen), rasterized here because gnome-shell draws the file
+# at its natural size and the SVG's own size (399x163) would crowd the login
+# screen; the box below keeps it at the 150x64 footprint the greeter has always
+# had (a test caps it at 256x128). Rendering has to happen after the package
+# transaction: the build stage that holds the verified SVG has no rasterizer,
+# while the image has librsvg2's typelib, python3-gobject and python3-cairo
+# (no rsvg-convert). Written under a Utah-owned name so no logos RPM owns or
+# erases it.
+GDM_LOGO_MAX_WIDTH=150
+GDM_LOGO_MAX_HEIGHT=64
+python3 - /tmp/utah-artwork-branding/bluefin-logo-dark.svg /usr/share/pixmaps/bluefin-gdm-logo.png \
+    "${GDM_LOGO_MAX_WIDTH}" "${GDM_LOGO_MAX_HEIGHT}" <<'PY'
+import sys
+import cairo
+import gi
+
+gi.require_version("Rsvg", "2.0")
+from gi.repository import Rsvg
+
+src, dst, max_w, max_h = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+handle = Rsvg.Handle.new_from_file(src)
+ok, iw, ih = handle.get_intrinsic_size_in_pixels()
+if not ok or iw <= 0 or ih <= 0:
+    sys.exit(f"{src}: no intrinsic size")
+scale = min(max_w / iw, max_h / ih)
+w, h = round(iw * scale), round(ih * scale)
+surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, w, h)
+viewport = Rsvg.Rectangle()
+viewport.x, viewport.y, viewport.width, viewport.height = 0, 0, w, h
+handle.render_document(cairo.Context(surface), viewport)
+surface.write_to_png(dst)
+print(f"rendered {dst} at {w}x{h}")
+PY
+chmod 0644 /usr/share/pixmaps/bluefin-gdm-logo.png
+
 # St.Icon in custom-command-menu resolves menuicon-setting through the theme.
 # Keep Bluefin's icon name and menu behavior; rebuild the index after every
 # overlay and logos-RPM operation so it includes our shipped symbolic SVG.

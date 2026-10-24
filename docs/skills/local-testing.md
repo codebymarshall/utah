@@ -257,6 +257,8 @@ just iso-tacklebox main                              # from localhost/utah:testi
 just iso-tacklebox main testing ghcr testing-20260922-256d837
 ```
 
+Both ISO builders fetch the installer mascot: [iso-review](local-testing/references/iso-review.md#installer-art).
+
 The script (`iso/scripts/build-iso-tacklebox.sh`) resolves flavored image
 names through `scripts/flavors.py image` -- no literals, enforced by
 `just check` -- requires root (loop devices, mkfs), and writes

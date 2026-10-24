@@ -141,7 +141,12 @@ BAKE_REF="localhost/utah-tacklebox-${FLAVOR}:${STREAM}"
 # Same context limitation as build-iso.sh: stage the parser into iso/live/src/
 # (removed by trap) so the Containerfile can ship it in the overlay.
 cp scripts/verify-desktop-contract.py iso/live/src/utah-verify-desktop-contract.py
-trap 'rm -f iso/live/src/utah-verify-desktop-contract.py' EXIT
+# The installer's mascot art is pinned in config/artwork.lock, not committed;
+# configure-live.sh (run from a copy of iso/live/src/) installs it.
+scripts/fetch-artwork.sh \
+    assets/raster/dinos/jacob-schnurr/utah/utah-look/black-outline/utah-look-black-outline.png \
+    iso/live/src/images/utahraptor.png
+trap 'rm -f iso/live/src/utah-verify-desktop-contract.py iso/live/src/images/utahraptor.png; rmdir iso/live/src/images 2>/dev/null || true' EXIT
 echo "==> Baking live Flatpaks as ${REAL_USER}: ${BAKE_REF}"
 sudo -u "$REAL_USER" podman build \
     --build-arg "SOURCE_IMAGE=${IMAGE_REF}" \

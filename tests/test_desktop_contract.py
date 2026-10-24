@@ -624,19 +624,26 @@ class GdmGreeterLogoTests(unittest.TestCase):
         self.assertIn("[org/gnome/login-screen]", content)
         self.assertIn(f"logo='{self.BLUEFIN_LOGO}'", content)
 
-    def test_logo_is_a_small_wordmark_shipped_in_the_overlay(self):
+    def test_logo_is_a_small_wordmark_rendered_from_pinned_artwork(self):
         """gnome-shell draws the greeter logo at natural size.
 
         The full-size ``bluefin.png`` (372x493) fills the login screen, so the
-        logo must be the small wordmark Utah ships itself.
+        logo must stay a small wordmark. The PNG is no longer committed: the
+        branding script rasterizes artwork's pinned wordmark SVG into a box,
+        and that box is what is capped here.
         """
-        import struct
-        png = ROOT / "system_files/shared" / self.BLUEFIN_LOGO.lstrip("/")
-        data = png.read_bytes()
-        self.assertEqual(data[:8], b"\x89PNG\r\n\x1a\n")
-        width, height = struct.unpack(">II", data[16:24])
+        import re
+        script = (ROOT / "scripts/configure-branding.sh").read_text()
+        width = int(re.search(r"^GDM_LOGO_MAX_WIDTH=(\d+)$", script, re.M).group(1))
+        height = int(re.search(r"^GDM_LOGO_MAX_HEIGHT=(\d+)$", script, re.M).group(1))
         self.assertLessEqual(width, 256)
         self.assertLessEqual(height, 128)
+        self.assertIn(self.BLUEFIN_LOGO, script)
+        self.assertIn("/tmp/utah-artwork-branding/bluefin-logo-dark.svg", script)
+        self.assertFalse(
+            (ROOT / "system_files/shared" / self.BLUEFIN_LOGO.lstrip("/")).exists(),
+            "the greeter logo is rendered at build time; a committed copy would be shadowed or stale",
+        )
 
     def test_keyfile_does_not_reference_fedora_fallback(self):
         """A regression to the Fedora wordmark must be caught at the source.

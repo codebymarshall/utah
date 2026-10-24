@@ -74,6 +74,22 @@ In summary:
 - External executable release assets (such as `uupd`) are pinned by version
   and verified with explicit sha256 checksums (`UUPD_SHA256`) before
   extraction.
+- Artwork reaches the image through the throwaway `artwork` stage, which keeps
+  the fetch tooling and unprocessed sources out of every layer.
+  `WALLPAPERS_IMAGE`/`WALLPAPERS_IMAGE_SHA` pin the multi-arch index digest of
+  `ghcr.io/projectbluefin/bluefin-wallpapers-gnome`; Renovate bumps the one ARG
+  line exactly as it does `COMMON_IMAGE_SHA`. The stage applies Common's own
+  normalization to that image (flat `*.jxl`/`*.svg`/`*.xml` into
+  `/usr/share/backgrounds/bluefin`, `~/.local/share` rewritten to
+  `/usr/share` in the XML), then fails if any path an XML names is missing.
+  Its `/out/overlay` is copied after Common's files in the first RUN, so the
+  direct pin **wins** over Common's transitively pinned copy; files only Common
+  has (`bluefin-hidamari.webm`) are left alone. `/out/branding` is bind
+  mounted into the branding RUN, which rasterizes the GDM logo.
+  Everything else comes from `config/artwork.lock` through
+  `scripts/fetch-artwork.sh` (one commit, one sha256 per path, fails closed).
+  Renovate does not touch the lock, because it cannot recompute checksums:
+  bump the commit and the checksums together by hand.
 - The digest-pinned `packages` stage is the package factory's RPM repository,
   and it is **bind mounted, never copied**: `RUN --mount=type=bind,
   from=packages,source=/repository,target=/etc/utah-packages,ro` feeds it to the

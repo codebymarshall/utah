@@ -41,7 +41,7 @@ WORK="$(mktemp -d "${UTAH_ISO_WORKDIR:-/var/tmp}/utah-iso.XXXXXX")"
 # unremovable, so a plain rm here fails with Permission denied on every one of
 # them -- leaving a ~13G tree behind and, because the trap is the last thing to
 # run, failing the whole recipe after the ISO was written successfully.
-cleanup_work() { podman unshare rm -rf "${WORK}" 2>/dev/null || rm -rf "${WORK}" 2>/dev/null || true; rm -f "${ROOT}/iso/live/src/utah-verify-desktop-contract.py"; }
+cleanup_work() { podman unshare rm -rf "${WORK}" 2>/dev/null || rm -rf "${WORK}" 2>/dev/null || true; rm -f "${ROOT}/iso/live/src/utah-verify-desktop-contract.py" "${ROOT}/iso/live/src/images/utahraptor.png"; rmdir "${ROOT}/iso/live/src/images" 2>/dev/null || true; }
 trap cleanup_work EXIT
 
 cd "${ROOT}"
@@ -49,6 +49,11 @@ cd "${ROOT}"
 # Stage the Flatpak parser into the context; the Containerfile ships it in the
 # overlay (persistent, so the live guest has it too), and the trap removes it.
 cp scripts/verify-desktop-contract.py iso/live/src/utah-verify-desktop-contract.py
+# Likewise the installer's mascot art, which is pinned in config/artwork.lock
+# rather than committed. The fetch verifies its sha256 before writing it.
+scripts/fetch-artwork.sh \
+    assets/raster/dinos/jacob-schnurr/utah/utah-look/black-outline/utah-look-black-outline.png \
+    iso/live/src/images/utahraptor.png
 echo "Building live environment from ${IMAGE}"
 # flatpak installs through bwrap, which needs to create a user namespace inside
 # the build container; rootless podman refuses that without sys_admin, and the

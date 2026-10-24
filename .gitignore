@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 output/
+
+# Installer mascot, staged from the pinned artwork commit by the ISO builders.
+iso/live/src/images/utahraptor.png

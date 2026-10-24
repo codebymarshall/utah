@@ -11,9 +11,16 @@ ARG COMMON_IMAGE=ghcr.io/projectbluefin/common
 ARG COMMON_IMAGE_SHA=sha256:73b8cde850d707964a6db95de30a97c9513054c478631b4fb73ffcd6860fcdf8
 ARG BREW_IMAGE=ghcr.io/ublue-os/brew
 ARG BREW_IMAGE_SHA=sha256:393b567da078f0f0638450c388e229011dae06f94a90017cb7525b57d9faa46e
+# Bluefin wallpapers, taken straight from the artwork repository's own image
+# rather than only through Common's pin of it, so wallpaper freshness does not
+# wait on a Common release. It is the multi-arch index digest: the contents are
+# architecture-independent. Renovate keeps it current like the pins above.
+ARG WALLPAPERS_IMAGE=ghcr.io/projectbluefin/bluefin-wallpapers-gnome
+ARG WALLPAPERS_IMAGE_SHA=sha256:820ec33dc2354e521bc915670625f8177a123d961121809b868e420f63c73ab8
 
 FROM ${COMMON_IMAGE}@${COMMON_IMAGE_SHA} AS common
 FROM ${BREW_IMAGE}@${BREW_IMAGE_SHA} AS brew
+FROM ${WALLPAPERS_IMAGE}@${WALLPAPERS_IMAGE_SHA} AS wallpapers
 FROM ${PACKAGE_IMAGE_REF} AS packages
 
 # v4l2loopback for the distribution kernel (#291). It is compiled here rather
@@ -27,6 +34,40 @@ COPY packages/hummingbird.repo packages/fedora-44.repo /etc/yum.repos.d/
 COPY packages/RPM-GPG-KEY-redhat-release-2 packages/RPM-GPG-KEY-fedora-44-primary /etc/pki/rpm-gpg/
 COPY scripts/install-v4l2loopback.sh /usr/local/libexec/utah-install-v4l2loopback
 RUN /usr/local/libexec/utah-install-v4l2loopback base /out
+
+# Artwork from projectbluefin/artwork, prepared in a stage that is thrown away
+# so neither the fetch tooling nor the unprocessed sources reach a layer.
+#  - /out/overlay is applied to / after Common's files, so it wins. Its
+#    wallpapers get the same normalization Common applies to the same image
+#    (flat files into backgrounds/bluefin, ~/.local/share rewritten to
+#    /usr/share), and the build fails if a path the XML names is missing.
+#    Common's own copy is older whenever its pin lags this one; files it has
+#    that this image lacks (bluefin-hidamari.webm) are untouched.
+#  - ublue-logo-symbolic.svg is the command-menu icon (the icon name is part of
+#    the desktop contract; the art is artwork's Utahraptor menu logo).
+#  - /out/branding/bluefin-logo-dark.svg is the source for the GDM greeter logo,
+#    which configure-branding.sh renders after the package transaction because
+#    nothing in this stage can rasterize an SVG.
+# Sources other than the wallpaper image are commit-pinned with sha256 in
+# config/artwork.lock and verified by scripts/fetch-artwork.sh.
+FROM ${BASE_IMAGE} AS artwork
+COPY scripts/fetch-artwork.sh /artwork/scripts/fetch-artwork.sh
+COPY config/artwork.lock /artwork/config/artwork.lock
+COPY --from=wallpapers / /wallpapers
+RUN set -eu; \
+    bg=/out/overlay/usr/share/backgrounds/bluefin; \
+    props=/out/overlay/usr/share/gnome-background-properties; \
+    install -d "$bg" "$props"; \
+    for f in /wallpapers/*.jxl /wallpapers/*.svg /wallpapers/*.xml; do install -Dm0644 "$f" "$bg/${f##*/}"; done; \
+    for f in /wallpapers/gnome-background-properties/*.xml; do install -Dm0644 "$f" "$props/${f##*/}"; done; \
+    sed -i 's|~/\.local/share|/usr/share|g' "$bg"/*.xml "$props"/*.xml; \
+    if grep -l '~' "$bg"/*.xml "$props"/*.xml; then echo "wallpaper XML still names a home path" >&2; exit 1; fi; \
+    grep -hoE '/usr/share/backgrounds/bluefin/[^<]+' "$bg"/*.xml "$props"/*.xml | sort -u | \
+    while read -r p; do [ -f "/out/overlay$p" ] || { echo "wallpaper XML names missing file $p" >&2; exit 1; }; done; \
+    /artwork/scripts/fetch-artwork.sh assets/vector/icons/logo-menu/logo-utahraptor-menu.svg \
+      /out/overlay/usr/share/icons/hicolor/scalable/actions/ublue-logo-symbolic.svg; \
+    /artwork/scripts/fetch-artwork.sh assets/vector/logos/bluefin/bluefin-logo-dark.svg \
+      /out/branding/bluefin-logo-dark.svg
 
 # Stage source origins without committing their COPY mtimes to the runtime image.
 FROM scratch AS inputs
@@ -55,6 +96,7 @@ COPY scripts/install-packages.py \
 COPY --from=common /system_files/shared /tmp/utah-common
 COPY --from=common /system_files/bluefin /tmp/utah-bluefin
 COPY --from=brew /system_files /tmp/utah-brew
+COPY --from=artwork /out/overlay /tmp/utah-artwork
 COPY system_files/shared /tmp/utah-local
 
 FROM ${BASE_IMAGE}
@@ -130,6 +172,8 @@ ARG UTAH_REWRITE_TIMESTAMPS=0
 # RPM changes about yearly.
 ARG GENERIC_LOGOS_URL=https://download.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/Packages/g/generic-logos-18.0.0-27.fc44.noarch.rpm
 ARG GENERIC_LOGOS_SHA256=2f9247f480788ef5cea4bc9f872bc5653ae0578fb7bec045f8b807cacc50699e
+# Artwork's wallpapers and command-menu icon overlay Common's files, so they
+# win; the `artwork` stage above says why and what it checks.
 # The v4l2loopback stage's output is bind mounted rather than copied: it is two
 # files, and a COPY would be a layer of its own.
 # After Common's files are copied into place we rename its `00-entry.just` to
@@ -169,10 +213,11 @@ RUN --mount=type=bind,from=v4l2loopback,source=/out,target=/tmp/utah-v4l2loopbac
     cp -a /tmp/utah-inputs/tmp/utah-common/. / && \
     cp -a /tmp/utah-inputs/tmp/utah-bluefin/. / && \
     cp -a /tmp/utah-inputs/tmp/utah-brew/. / && \
+    cp -a /tmp/utah-inputs/tmp/utah-artwork/. / && \
     mv /usr/share/ublue-os/just/00-entry.just /usr/share/ublue-os/just/00-common.just && \
     cp -a /tmp/utah-inputs/tmp/utah-local/. / && \
     cp -a /tmp/utah-v4l2loopback/. / && \
-    rm -rf /tmp/utah-scripts /tmp/utah-common /tmp/utah-bluefin /tmp/utah-brew /tmp/utah-local && \
+    rm -rf /tmp/utah-scripts /tmp/utah-common /tmp/utah-bluefin /tmp/utah-brew /tmp/utah-artwork /tmp/utah-local && \
     rm -f /etc/dconf/db/distro.d/05-bluefin-searchlight-extension && \
     curl -fsSL "${GENERIC_LOGOS_URL}" -o /tmp/generic-logos.rpm && \
     echo "${GENERIC_LOGOS_SHA256}  /tmp/generic-logos.rpm" | sha256sum --check --strict && \
@@ -286,6 +331,7 @@ ARG UUPD_TIMER_SHA256=bbb5f098ec33d047bdef571e0bc112364df157e0f92d73e0febab703c4
 # scripts/mirror-shim.sh rather than inline, because as a bare && chain a
 # failure printed nothing at all -- see the comment at the top of that script.
 RUN --mount=type=bind,from=common,source=/system_files/bluefin/usr/share/pixmaps,target=/tmp/utah-bluefin-pixmaps,ro \
+    --mount=type=bind,from=artwork,source=/out/branding,target=/tmp/utah-artwork-branding,ro \
     mkdir -p /tmp/uupd && \
     curl -fsSL "https://github.com/ublue-os/uupd/releases/download/${UUPD_VERSION}/uupd_Linux_x86_64.tar.gz" \
       -o /tmp/uupd/uupd_Linux_x86_64.tar.gz && \

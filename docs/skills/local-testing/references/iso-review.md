@@ -32,3 +32,13 @@ installed account, plus a loadable TUN device on gaming kernels. Keep terminal
 launch stderr in failed fastfetch diagnostics: a user-namespace or sandbox
 failure otherwise appears only as blank OCR. An OGC kernel that boots the
 desktop but cannot run its declared Flatpaks has failed ISO acceptance.
+
+## Installer art
+
+`iso/scripts/build-iso.sh` and `build-iso-tacklebox.sh` fetch the installer's
+Utah mascot (`utah-look-black-outline.png`, used for the installer tour and the
+dock icon) from `projectbluefin/artwork` at the commit in `config/artwork.lock`
+with `scripts/fetch-artwork.sh`, verify its sha256, stage it as
+`iso/live/src/images/utahraptor.png` (git-ignored) and remove it on exit. So an
+ISO build needs network for that fetch; `configure-live.sh` fails with a clear
+message if the file is missing. Nothing binary is committed for it.

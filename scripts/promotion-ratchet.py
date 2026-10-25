@@ -187,7 +187,7 @@ def _bind_tested(entry: dict, tested_sha: str, registry: Registry, github: GitHu
 
 class Outcome(NamedTuple):
     image: str
-    verdict: str  # new | same-digest | ahead | behind | same-commit-different-digest | diverged
+    verdict: str  # new | same-digest | ahead | rebuild | behind | superseded-rebuild | diverged
     detail: str
 
 
@@ -221,9 +221,21 @@ def assess(
     if relation == "ahead":
         return Outcome(image, "ahead", f"tested commit descends from {where}")
     if relation == "identical":
+        # The nightly rebuild of an unchanged branch re-pushes the same commit
+        # under a new digest. That image passed E2E, so it replaces the older
+        # one -- unless an even newer rebuild has since taken over the dated
+        # tag, which would leave :testing on an image its tag no longer names.
+        tested = commit_behind(entry["ref"], registry, github)
+        current = registry.digest(f"{base}:{tested.version}")
+        if current != entry["digest"]:
+            return Outcome(
+                image, "superseded-rebuild",
+                f"same commit as {where}, but {tested.version} now points at "
+                f"{current or 'nothing'}, not the tested digest {entry['digest']}",
+            )
         return Outcome(
-            image, "same-commit-different-digest",
-            f"same commit as {where}, but a different image digest ({entry['digest']} vs {promoted_digest})",
+            image, "rebuild",
+            f"newer image of the same commit as {where} ({entry['digest']} replaces {promoted_digest})",
         )
     if relation == "behind":
         return Outcome(image, "behind", f"tested commit is older than {where}")
@@ -250,10 +262,9 @@ def decide(
     lines = [f"{o.image}: {o.verdict}: {o.detail}" for o in outcomes]
     verdicts = {o.verdict for o in outcomes}
 
-    refusals = sorted(verdicts & {"diverged", "same-commit-different-digest"})
-    if refusals:
+    if "diverged" in verdicts:
         lines.append(
-            f"::error title=:{moving_tag} not moved::{', '.join(refusals)}. "
+            f"::error title=:{moving_tag} not moved::diverged. "
             "Refusing to move tags for a commit that is not a descendant of the promoted one. "
             "Evidence is retained; a maintainer must reconcile."
         )
@@ -262,6 +273,13 @@ def decide(
         lines.append(
             f"::warning title=:{moving_tag} not moved::Out-of-order completion: the tested commit "
             f"{tested_sha[:7]} is older than what :{moving_tag} already points at. "
+            "Tags left as they are; evidence retained."
+        )
+        return "refuse", 0, lines
+    if "superseded-rebuild" in verdicts:
+        lines.append(
+            f"::warning title=:{moving_tag} not moved::A newer rebuild of commit {tested_sha[:7]} "
+            "has replaced the tested image under its dated tag; its own E2E decides. "
             "Tags left as they are; evidence retained."
         )
         return "refuse", 0, lines

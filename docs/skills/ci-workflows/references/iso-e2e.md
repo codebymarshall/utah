@@ -78,13 +78,17 @@ tip. `promote-to-testing` runs `scripts/promotion-ratchet.py`, in order:
 2. **`decide`** moves `:testing` only if the tested commit is the same as, or a
    descendant of, the commit behind the image `:testing` already points at
    (GitHub `compare`, `ahead`). The tip is never read. Outcomes, per flavor and
-   then combined: no `:testing` yet or tested is ahead -> `promote`; tested
-   digests already `:testing` -> `noop`; tested commit older -> `refuse` with a
-   `::warning` (out-of-order completion is expected, the run stays green and
-   the evidence is kept); diverged from the promoted commit (force-push), the
-   same commit under a different digest, an image not built from the tested
-   commit, or any registry/API error or unreadable label -> `::error`, job
-   fails, nothing moves. Any one refusing flavor refuses the whole promotion.
+   then combined: no `:testing` yet or tested is ahead -> `promote`; the same
+   commit under a newer digest (the nightly `sync-main-to-testing` rebuild of
+   an unchanged branch) whose dated tag still names the tested digest ->
+   `promote`, keeping `:testing` and `testing-<date>-<sha7>` in step for the
+   release gate; tested digests already `:testing` -> `noop`; tested commit
+   older, or a same-commit rebuild already superseded under its dated tag by a
+   newer rebuild -> `refuse` with a `::warning` (out-of-order completion is
+   expected, the run stays green and the evidence is kept); diverged from the
+   promoted commit (force-push), an image not built from the tested commit, or
+   any registry/API error or unreadable label -> `::error`, job fails, nothing
+   moves. Any one refusing flavor refuses the whole promotion.
 3. **Move** the tags (`skopeo copy --all --preserve-digests`) only on
    `promote`.
 

@@ -241,10 +241,32 @@ class DecideTests(unittest.TestCase):
         action, code, _ = decide(self.w, "promoted", matrix)
         self.assertEqual((action, code), ("noop", 0))
 
-    def test_a_rebuild_of_the_promoted_commit_does_not_swap_the_image(self):
+    def test_a_nightly_rebuild_of_the_promoted_commit_promotes_the_newer_image(self):
         action, code, lines = decide(self.w, "promoted")  # tested_matrix publishes new digests
-        self.assertEqual((action, code), ("refuse", 1))
-        self.assertIn("same-commit-different-digest", "\n".join(lines))
+        self.assertEqual((action, code), ("promote", 0))
+        self.assertIn("rebuild", "\n".join(lines))
+        self.assertNotIn("::error", "\n".join(lines))
+
+    def test_a_same_day_rebuild_of_the_promoted_commit_promotes_the_newer_image(self):
+        matrix = {"include": [self.w.entry(i, self._rebuild_same_day(i)) for i in FLAVORS]}
+        action, code, _ = decide(self.w, "promoted", matrix)
+        self.assertEqual((action, code), ("promote", 0))
+
+    def _rebuild_same_day(self, image: str) -> str:
+        d = digest(f"{image}-promoted-sameday")
+        self.w.labels[d] = {ratchet.VERSION_LABEL: version("promoted")}
+        self.w.tags[f"{PREFIX}/{image}:{version('promoted')}"] = d
+        return d
+
+    def test_a_rebuild_superseded_by_a_newer_rebuild_is_refused_without_failing(self):
+        matrix = tested_matrix(self.w, "promoted")
+        for image in FLAVORS:  # a later rebuild of the same commit took the dated tag
+            self.w.tags[f"{PREFIX}/{image}:{version('promoted', '20261025')}"] = digest(f"{image}-newest")
+        action, code, lines = decide(self.w, "promoted", matrix)
+        self.assertEqual((action, code), ("refuse", 0))
+        joined = "\n".join(lines)
+        self.assertIn("superseded-rebuild", joined)
+        self.assertIn("::warning", joined)
 
     def test_no_promoted_image_at_all_promotes(self):
         w = world_with_history()

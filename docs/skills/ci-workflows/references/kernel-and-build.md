@@ -92,7 +92,11 @@ and confusingly, so this reads the same list (comment,
 `.github/workflows/promote-testing-to-main.yml`). The `promote` job calls
 `reusable-promote-squash.yml@v1` (same SHA pin) against
 `ghcr.io/<owner>`, with a cosign identity regexp pinned to
-`reusable-build.yml@[0-9a-f]{40}` and `run_e2e: false`.
+`reusable-build.yml@[0-9a-f]{40}` and `run_e2e: false`. `run_e2e` stays false
+deliberately: the pinned reusable gate reads the `e2e/post-testing` commit
+status of the `testing` branch tip, which main outruns during every E2E run.
+The E2E requirement is enforced against the promoted digests in
+`execute-release.yml` (`e2e-evidence`); see `release-cadence.md`.
 
 ## sync-main-to-testing
 

@@ -60,10 +60,77 @@ failure still blocks that acceptance and tag promotion.
 Every matrix job preserves build/test logs, serial logs, and screenshots,
 including on failure. Only passing jobs upload `docs/verification` with the
 source commit, original build run, E2E run, image digest and ISO checksum.
-The promotion job depends on the LUKS and production-ISO matrices; a
-superseded testing commit cannot move tags. Registry tag copies are sequential,
-not an atomic multi-tag transaction: a registry failure can interrupt promotion
-after a partial copy.
+The promotion job depends on the LUKS and production-ISO matrices, then runs
+the ratchet described next.
+
+**`:testing` is the latest E2E-green commit, not the branch tip.** Main takes
+a merge about every hour (people, Renovate, the hive bot), and a
+build plus this E2E takes longer than that, so `testing` has always moved on by
+the time a run finishes. Promotion therefore never compares against the branch
+tip. `promote-to-testing` runs `scripts/promotion-ratchet.py`, in order:
+
+1. **`record`** posts one commit status per tested digest on the tested commit:
+   context `e2e/post-testing/<image>`, state `success`, description = the exact
+   `sha256:` digest, plus the aggregate `e2e/post-testing`. A status is
+   per commit and per digest, so a later run, a rebuild, or a newer commit never
+   hides it ("last status wins" cannot happen). It is posted before the
+   decision because it is true whatever the ratchet decides.
+2. **`decide`** moves `:testing` only if the tested commit is the same as, or a
+   descendant of, the commit behind the image `:testing` already points at
+   (GitHub `compare`, `ahead`). The tip is never read. Outcomes, per flavor and
+   then combined: no `:testing` yet or tested is ahead -> `promote`; the same
+   commit under a newer digest (the nightly `sync-main-to-testing` rebuild of
+   an unchanged branch) whose dated tag still names the tested digest ->
+   `promote`, keeping `:testing` and `testing-<date>-<sha7>` in step for the
+   release gate; tested digests already `:testing` -> `noop`; tested commit
+   older, or a same-commit rebuild already superseded under its dated tag by a
+   newer rebuild -> `refuse` with a `::warning` (out-of-order completion is
+   expected, the run stays green and the evidence is kept); diverged from the
+   promoted commit (force-push), an image not built from the tested commit, or
+   any registry/API error or unreadable label -> `::error`, job fails, nothing
+   moves. Any one refusing flavor refuses the whole promotion.
+3. **Move** the tags (`skopeo copy --all --preserve-digests`) only on
+   `promote`.
+
+So an E2E of commit X that is newer than the promoted commit promotes X while
+`testing` is already several commits ahead, intermediate builds that were never
+E2E'd are skipped, and a slow older run can never move `:testing` backwards.
+Tag copies are sequential, not an atomic multi-tag transaction: a registry
+failure part-way leaves some flavors on the new commit. Rerunning the job, or
+the next descendant's E2E, completes it, because a flavor still behind sees the
+tested commit as `ahead` and the flavors already moved are no-ops.
+
+**Recovering the commit behind a published image.** Every build bakes
+`org.opencontainers.image.version=testing-<yyyymmdd>-<sha7>` into the image
+config (`just build-ghcr`) and publishes the image under that same tag; the
+image digest carries the label. Do not use `org.opencontainers.image.revision`
+or `vcs-ref`: they are inherited from the Hummingbird base image and identical
+across Utah commits (verified on `testing-20261024-028d3f4` and `-9acbde2`,
+both `a7eaec5...`). The label is expanded to a full SHA through the GitHub API;
+the dated tag is checked against the `:testing` digest as corroboration and
+a mismatch (a same-day rebuild re-pushed the tag) is a warning, not a refusal,
+because the label still names the commit.
+
+**Serialisation and writers.** The workflow-level group `utah-iso-e2e`
+(`cancel-in-progress: false`) runs one E2E at a time, so two promotions never
+interleave, and GitHub keeps only the newest pending run, so a backlog collapses
+to the latest commit. `promote-to-testing` is the only workflow that writes
+`:testing` (`tests/test_promotion_workflows.py` asserts this); builds publish
+only the dated tag (`publish_stream_tag: "false"`). The recording and tag steps
+run only from `main`: the release gate trusts these statuses, and a dispatch
+from another ref would run that branch's copy of this file. It still tests; it
+cannot publish evidence or move a tag.
+
+**Recovery.** If `:testing` ever points at an image whose label cannot be
+read, every promotion fails closed until a maintainer retags `:testing` to a
+known-good dated tag (`skopeo copy --all --preserve-digests
+docker://ghcr.io/projectbluefin/<image>:testing-<date>-<sha>
+docker://ghcr.io/projectbluefin/<image>:testing`); the ratchet resumes from
+there.
+
+**What the release checks.** See `release-cadence.md`: `execute-release.yml`
+requires the `e2e/post-testing/<image>` status for the digest `:testing` points
+at, on the commit that digest was built from.
 
 A separate least-privilege job proposes the main desktop's screenshots in
 `automation/iso-verification`, a documentation PR. It also depends on
@@ -94,7 +161,8 @@ main tacklebox ISO at 7,288,455,168 bytes (6.79 GiB; the budget had already
 been exceeded, 6,928,269,312 bytes, before the GNOME app and parity packages
 landed). The post-testing E2E applies the same limit to that ISO. Size
 reduction strategies are tracked in #875; move the guard down again only with
-a measured reduction.
+a measured reduction. `just measure-iso` measures the squashfs root under each
+store/compression strategy (see `evidence/iso-size.md`).
 
 When the guard trips, measure before trimming. The kernel cache image's last
 layer is only `/utah-cache`, so its archives can be inventoried without a

@@ -311,7 +311,7 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.resolve.outputs.suites) }}
-    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@e6c805cb187e76ccf387d1439b0459627c873669 # v1
+    uses: projectbluefin/testsuite/.github/workflows/e2e.yml@171ebcfeef7b73468b8dfccae34fc7001f8d7603 # v1
     with:
       image: ${{ fromJSON(needs.resolve.outputs.digests)[matrix.image] }}
       compose_image: false
@@ -319,28 +319,74 @@ jobs:
       test_repository: projectbluefin/testsuite
       test_ref: f690d22e4dfb8f71a3cdb7e56c20fb1f9e88066a
 
+  # :testing is a ratchet over commits, not a mirror of the branch tip. The
+  # tested digests become :testing when their commit is the promoted commit or
+  # a descendant of it, however far main has moved meanwhile; an older or
+  # diverged commit never moves it backwards. See scripts/promotion-ratchet.py.
+  #
+  # This job is the only writer of :testing. The workflow-level concurrency
+  # group (utah-iso-e2e, cancel-in-progress: false) runs one E2E at a time, so
+  # two promotions never interleave.
+  #
+  # Only a run from main writes anything: the release gate trusts the commit
+  # statuses recorded here, and a dispatch from another ref runs another
+  # branch's copy of this file. Such a run still tests; it just cannot publish
+  # evidence or move a tag.
   promote-to-testing:
     needs: [resolve, luks, production-iso]
     runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: write
+      statuses: write
     steps:
-      - name: Promote only the tested digests if still current
+      - name: Explain why nothing is published
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::warning::Not running from main (${GITHUB_REF}); E2E evidence is kept, but no status is recorded and no tag moves."
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        if: github.ref == 'refs/heads/main'
+        with:
+          persist-credentials: false
+      - name: Authenticate to GHCR
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          command -v skopeo >/dev/null || { sudo apt-get update && sudo apt-get install -y skopeo; }
+          echo "$GH_TOKEN" | skopeo login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      # Recorded before the ratchet decides, because it is true whatever the
+      # ratchet says: this exact digest passed LUKS and production-ISO. The
+      # release gate reads it back per digest and per commit.
+      - name: Record E2E evidence for the tested digests
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
           MATRIX: ${{ needs.resolve.outputs.matrix }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 scripts/promotion-ratchet.py record
+      - name: Decide whether the tested commit may advance :testing
+        id: ratchet
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ needs.resolve.outputs.sha }}
+          MATRIX: ${{ needs.resolve.outputs.matrix }}
+        run: python3 scripts/promotion-ratchet.py decide
+      - name: Move :testing to the tested digests
+        if: github.ref == 'refs/heads/main' && steps.ratchet.outputs.action == 'promote'
+        env:
+          MATRIX: ${{ needs.resolve.outputs.matrix }}
         run: |
           set -euo pipefail
-          current=$(gh api "repos/$REPOSITORY/commits/testing" --jq .sha)
-          if [[ "$current" != "$SOURCE_SHA" ]]; then
-            echo "Superseded build: retaining evidence without moving tags."
-            exit 0
-          fi
-          sudo apt-get update && sudo apt-get install -y skopeo
-          echo "$GH_TOKEN" | skopeo login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          # Sequential, not atomic. A failure part-way leaves some flavors on
+          # the new commit; rerunning this job (or the next descendant E2E)
+          # completes it, because the ratchet accepts the same commit for any
+          # flavor still behind it.
           while IFS= read -r ref; do
             skopeo copy --all --preserve-digests "docker://$ref" "docker://${ref%@*}:testing"
           done < <(jq -r '.include[].ref' <<< "$MATRIX")

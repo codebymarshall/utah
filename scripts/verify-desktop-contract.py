@@ -96,6 +96,26 @@ def unit_masked(unit: str, root: Path = Path("/")) -> bool:
     return False
 
 
+def unit_disabled(unit: str, root: Path = Path("/")) -> bool:
+    """True when a unit is deliberately kept off: masked, disabled, static or absent.
+
+    This is the negative half of the service contract: the enabled/user_enabled
+    and masked lists assert what must be on, this asserts what must stay off. A
+    unit that is merely absent (its package not installed) is also off, so it
+    counts here. A static unit has no [Install] section, so it cannot be enabled
+    at all (ipp-usb.service is started only by udev on device hotplug).
+    """
+    if unit_masked(unit, root):
+        return True
+    try:
+        result = subprocess.run(
+            ["systemctl", "is-enabled", unit], capture_output=True, text=True, check=False
+        )
+        return result.stdout.strip() in {"disabled", "static", "not-found"}
+    except FileNotFoundError:
+        return False
+
+
 def validate_contract(contract: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     for section in ("branding", "configuration", "flatpak", "services"):
@@ -225,16 +245,22 @@ def main() -> int:
         if not unit_masked(unit):
             errors.append(f"required service is not masked: {unit}")
 
+    for unit in services.get("disabled", []):
+        if not unit_disabled(unit):
+            errors.append(f"service must be disabled: {unit}")
+
     for error in errors:
         fail(error)
     if errors:
         return 1
     masked_count = len(services.get("masked", []))
     masked_msg = f", {masked_count} masked services" if masked_count else ""
+    disabled_count = len(services.get("disabled", []))
+    disabled_msg = f", {disabled_count} disabled services" if disabled_count else ""
     print(
         f"Utah desktop contract passed: {len(flatpak['apps'])} Flatpaks, "
         f"{len(services.get('enabled', []))} enabled services, "
-        f"{len(services.get('user_enabled', []))} user services{masked_msg}"
+        f"{len(services.get('user_enabled', []))} user services{masked_msg}{disabled_msg}"
     )
     return 0
 

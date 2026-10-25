@@ -1,7 +1,7 @@
 ---
 name: desktop-contract
 version: "1.0"
-last_updated: "2026-10-13"
+last_updated: "2026-10-25"
 id: desktop-contract
 one_line_purpose: Maintain Bluefin Utah identity, Bluefin desktop defaults, and first-boot Flatpak policy.
 entry_point: docs/skills/desktop-contract.md
@@ -126,13 +126,11 @@ default Brewfile. Utah follows that upstream default set; the ordered app
 contract changes with the pinned artifact rather than overriding its Brewfile.
 Read the live pin from `Containerfile` — Renovate rewrites it there, so no
 digest is repeated in this document. The verifier still compares the actual
-inherited Brewfile. This source change does not
-introduce an uninstall for existing user-installed applications.
+inherited Brewfile.
 
 The same pinned Common artifact owns ChairLift's alpha.4 helper and ublue
 policy. Their payload matches the release and requires administrator
-authentication for all nine actions. The image contract requires both files;
-Utah does not layer a duplicate release install over Common's copy.
+authentication for all nine actions.
 The full Control Center integration follows Dakota: Common supplies the
 all-user launcher/icons, distro config, trusted `projectbluefin/tap/chairlift`
 Brewfile, bootc staging helper/policy, and three GSettings schemas. The desktop
@@ -200,25 +198,15 @@ one is pending a composefs boot check (see below):
   adds a no-op `pulse.cmd = [ ]`; drop it once common's copy parses.
 - `systemd-remount-fs.service: mount: /: fsconfig() failed: overlay: No
   changes allowed in reconfigure` (#585): systemd-remount-fs unconditionally
-  remounts / read-write. On the composefs image `/` is mounted `ro`
-  (`findmnt /` reports `composefs overlay ro,...`), so the remount fails and
-  the unit exits 1, leaving `SystemState=degraded` even when nothing else
-  is wrong. `systemd-remount-fs.service.d/10-utah-composefs-skip.conf` adds
-  `ConditionPathIsReadWrite=/`; composefs's `ST_RDONLY` flag makes the
-  condition fail, systemd skips the unit instead of failing it. The live
-  ISO path (`iso/scripts/build-iso.sh`, overlay root) is mounted writable,
-  so the condition succeeds and the remount still runs there. A blanket
-  mask would silence both paths; a condition keyed on the mount state
-  keeps the writable ISO alive. Limitation: the condition is false on any
-  boot where `/` is read-only, including non-composefs ones (`ro` /
-  `rootflags=ro` kargs, an fsck fallback, an incomplete ostree
-  deployment), so the unit is skipped there too. The skip covers the
-  whole unit, not just `/`: other fstab entries systemd-remount-fs would
-  remount (`/usr`, API VFS such as a `/tmp` tmpfs or `/proc` `hidepid=`)
-  are also left alone. Utah ships no such entries, so only operator-added fstab
-  lines are affected; removing the drop-in restores the unit. The verifier in
-  `tests/test_boot_noise.py` keeps the drop-in in sync with the contract.
-  Not yet boot-verified: on a composefs VM, confirm
+  remounts `/` read-write, but the composefs root is `ro` (`findmnt /` shows
+  `composefs overlay ro,...`), so the remount fails and the unit exits 1.
+  `systemd-remount-fs.service.d/10-utah-composefs-skip.conf` adds
+  `ConditionPathIsReadWrite=/`, which composefs's `ST_RDONLY` flag fails, so
+  systemd skips the unit. The writable live ISO root still runs the remount.
+  Limitation: any read-only `/` (non-composefs `ro` kargs, fsck fallback,
+  incomplete ostree deployment) skips the unit too. Removing the drop-in
+  restores it; `tests/test_boot_noise.py` keeps the drop-in in sync with the
+  contract. Not yet boot-verified: on a composefs VM, confirm
   `systemctl show -p ActiveState,ConditionResult systemd-remount-fs` reports
   `inactive`/`no` and `systemctl is-system-running` reports `running`.
 
@@ -286,11 +274,9 @@ its `metadata.json`. It runs in two modes from the same script:
   metadata, so gnome-shell hit "Permission denied". The build script
   normalizes the tree with `chmod -R u+rwX,go+rX,go-w`.
 
-Building GSConnect runs meson install. Because `desktop-file-utils` is not
-published by Hummingbird or Utah's repository, `scripts/build-gnome-extensions.sh`
-disables GSConnect's `update_desktop_database` meson post-install hook to avoid
-failing on the missing utility. MIME and schema databases are handled by the
-system and glib-compile-schemas.
+Building GSConnect runs meson install; `scripts/build-gnome-extensions.sh` disables GSConnect's
+`update_desktop_database` hook because `desktop-file-utils` is not published by Hummingbird or
+Utah's repository. MIME and schema databases are handled by the system and glib-compile-schemas.
 
 Declaring GNOME 51 in `metadata.json` is necessary, not sufficient: both
 failures below passed the metadata check, built cleanly, and only showed up
@@ -316,7 +302,13 @@ copy the changed tree under `bootc usr-overlay`, restart `gdm`, then verify
 `gnome-extensions info <uuid>` reports `State: ACTIVE`; inspect the session
 journal for load errors. SSH probes must set `XDG_RUNTIME_DIR=/run/user/<uid>`
 and `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/<uid>/bus`, because SSH does
-not inherit the graphical session's D-Bus environment.
+not inherit the graphical session's D-Bus environment. Extension dconf
+defaults in `08-dakota-extension-defaults` use short schema paths, never the
+UUID folder name, and GNOME applies a dconf key only when a shipped schema
+declares that path. The guard in
+[`references/extension-dconf-defaults.md`](references/extension-dconf-defaults.md)
+(`tests/test_dakota_extension_defaults.py`) asserts every section header matches
+a `path=` the extensions ship; it skips when the submodules are not checked out.
 
 ## The OS logo is an os-release key
 
@@ -371,12 +363,10 @@ originally caught the regression. The compile is guarded on `/usr/bin/dconf`
 so it is a no-op on a host without the gnome-desktop stack (CI without
 `dnf install` of it).
 
-`dconf update` does **not** validate the logo path — it compiles keyfiles
-and stores `logo` as an opaque string, so a dangling path compiles
-cleanly. The image itself is guarded by the new `[branding].files`
+`dconf update` compiles keyfiles but treats `logo` as an opaque string, so a
+dangling path compiles cleanly; the image is guarded by the `[branding].files`
 entry for `/usr/share/pixmaps/bluefin-gdm-logo.png` in
-`contracts/bluefin-desktop.toml`, enforced by
-`utah-verify-desktop-contract` in the same `RUN` layer.
+`contracts/bluefin-desktop.toml` via `utah-verify-desktop-contract`.
 
 `[configuration].files` asserts the keyfile's path on disk;
 `[configuration].file_contains` pins both the schema header and the
@@ -449,6 +439,16 @@ the base names, and a genuinely attached serial device on another port still
 gets its login. A mask is also the only lever that works here — the generator's
 `getty.target.wants` symlink is created in `/run` at boot, so it cannot be
 deleted at build time, and a preset entry alone would not stop it.
+
+### The newly added network daemons are held disabled (#869)
+
+The parity rollout (#868) added network daemons that Hummingbird's
+`99-default-disable.preset` must keep off. The `disabled` list in
+`contracts/bluefin-desktop.toml` (checked by `verify-desktop-contract.py`)
+fails the build if `dnsmasq.service`, `rpcbind.service`/`.socket`,
+`autofs.service`, `openvpn-{client,server}@.service`, `saned.socket` or
+`ipp-usb.service` is enabled; masked, static (ipp-usb is udev-started) or
+absent units count as off. Keep it in sync with `baselines/triage.toml`.
 
 ### The fwupd-refresh unit pins a static user (#385)
 

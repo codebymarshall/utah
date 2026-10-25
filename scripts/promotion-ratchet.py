@@ -40,7 +40,7 @@ import os
 import re
 import subprocess
 import sys
-from dataclasses import dataclass
+from typing import NamedTuple
 
 VERSION_LABEL = "org.opencontainers.image.version"
 VERSION_RE = re.compile(r"^testing-(\d{8})-([0-9a-f]{7,40})$")
@@ -150,8 +150,7 @@ class GitHub:
         )
 
 
-@dataclass
-class Commit:
+class Commit(NamedTuple):
     sha: str
     version: str
 
@@ -186,8 +185,7 @@ def _bind_tested(entry: dict, tested_sha: str, registry: Registry, github: GitHu
         )
 
 
-@dataclass
-class Outcome:
+class Outcome(NamedTuple):
     image: str
     verdict: str  # new | same-digest | ahead | behind | same-commit-different-digest | diverged
     detail: str

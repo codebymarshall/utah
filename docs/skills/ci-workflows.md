@@ -1,7 +1,7 @@
 ---
 name: ci-workflows
-version: "1.1"
-last_updated: "2026-10-14"
+version: "1.2"
+last_updated: "2026-10-25"
 id: ci-workflows
 one_line_purpose: Navigate Utah's build, promote, and sync workflow topology.
 entry_point: docs/skills/ci-workflows.md
@@ -44,7 +44,9 @@ post-build verification workflows, not the complete workflow inventory:
   the review image. For kernel-cache consumers, first build the matching signed
   cache through the normal pipeline.
 - `.github/workflows/promote-testing-to-main.yml` -- pushes to `testing`, a
-  nightly cron, and manual dispatch.
+  nightly cron, and manual dispatch. Maintains the `testing` -> `main` squash
+  PR; it never moves image tags and keeps `run_e2e: false` (the pinned reusable
+  gate keys E2E status to the branch tip; see release-cadence).
 - `.github/workflows/sync-main-to-testing.yml` -- source pushes to `main`,
   nightly cron, and manual dispatch; explicitly dispatches the testing build
   after syncing. Token-authenticated branch pushes alone do not start CI.
@@ -98,6 +100,18 @@ post-build verification workflows, not the complete workflow inventory:
   merge is enabled.
 - `.github/workflows/post-testing-e2e.yml` -- successful non-PR testing builds
   explicitly dispatch this, or manually supply a successful testing build run ID.
+  Its `promote-to-testing` job records per-digest E2E evidence as commit
+  statuses and moves `:testing` through a monotonic ratchet: `:testing` is the
+  latest E2E-green commit, not the branch tip, so merges to `main` during a
+  run never block promotion and an older run never moves it backwards
+  (`scripts/promotion-ratchet.py`; details in
+  [iso-e2e](ci-workflows/references/iso-e2e.md)).
+- `.github/workflows/execute-release.yml` -- promotion pushes to `main` and
+  manual dispatch retag `:stable`. Its `e2e-evidence` job gates the release on
+  the E2E evidence recorded for the exact digests `:testing` points at, not on
+  the `testing` branch tip, then hands the reusable release the
+  commit-addressed source tags it verified
+  ([release-cadence](ci-workflows/references/release-cadence.md)).
 - `.github/workflows/prow.yml` -- slash commands on issues and pull requests,
   roster authorization via `projectbluefin/.project/.github/workflows/prow-authorize.yml`,
   issue transfers via `prow-transfer.yml`, and label syncing via

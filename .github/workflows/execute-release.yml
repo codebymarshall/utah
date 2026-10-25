@@ -48,8 +48,45 @@ jobs:
           SHA: ${{ github.sha }}
           REPOSITORY: ${{ github.repository }}
         run: python3 scripts/release-trigger.py
-  execute:
+
+  # The release retags what :testing points at. :testing only ever moves
+  # through post-testing-e2e.yml's ratchet, but that is a convention; this
+  # gate checks it. For every flavor it recovers the commit behind the :testing
+  # digest and requires the E2E evidence recorded for exactly that digest on
+  # exactly that commit. It never asks what the testing branch tip is, so merges
+  # landing while a release runs cannot block or bless it. No evidence, no
+  # release. The retag then starts from the commit-addressed tag it verified
+  # rather than resolving the moving :testing tag a second time.
+  e2e-evidence:
     needs: [check-trigger, variants]
+    if: needs.check-trigger.outputs.is-promotion == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      statuses: read
+    outputs:
+      variants: ${{ steps.gate.outputs.variants }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Authenticate to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          command -v skopeo >/dev/null || { sudo apt-get update && sudo apt-get install -y skopeo; }
+          echo "$GH_TOKEN" | skopeo login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          REGISTRY: ghcr.io/${{ github.repository_owner }}
+          VARIANTS: ${{ needs.variants.outputs.list }}
+        run: python3 scripts/promotion-ratchet.py release-gate
+  execute:
+    needs: [check-trigger, e2e-evidence]
     if: needs.check-trigger.outputs.is-promotion == 'true'
     uses: projectbluefin/actions/.github/workflows/reusable-execute-release.yml@a7e7bba6c7ae819006cabc9a106318c77c2635f8 # v1
     permissions:
@@ -60,7 +97,8 @@ jobs:
       pull-requests: write
     with:
       registry: ghcr.io/${{ github.repository_owner }}
-      variants: ${{ needs.variants.outputs.list }}
+      # Commit-addressed source tags from the e2e-evidence gate, not :testing.
+      variants: ${{ needs.e2e-evidence.outputs.variants }}
       cosign_identity_regexp: ^https://github\.com/projectbluefin/actions/\.github/workflows/reusable-build\.yml@[0-9a-f]{40}$
       fast_forward_sha: ${{ github.sha }}
       # The release gate re-runs smoke,common against the exact candidate

@@ -15,8 +15,8 @@
         "promotion"
       ],
       "description": "Build and contract jobs, promotion, branch sync, parity and extension update workflows, reusable actions and Renovate pins. Use when editing GitHub Actions or debugging CI.",
-      "version": "1.1",
-      "last_updated": "2026-10-14",
+      "version": "1.2",
+      "last_updated": "2026-10-25",
       "doc_type": "reference"
     },
     {

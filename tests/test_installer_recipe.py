@@ -70,7 +70,8 @@ class InstallerFlatpakPathTests(unittest.TestCase):
     copied every Flatpak to /sysroot/var/lib/flatpak/lib/flatpak: the
     installed system had none, and the dock (Firefox, Bazaar, Files) was
     empty. The e2e sends no such key and so never saw it. Without the key,
-    fisherman finds ostree/deploy/default/var itself.
+    fisherman finds the deployment's var itself (state/os/default/var under
+    the composefs backend).
     """
 
     def test_flatpak_var_path_is_a_var_root_if_set(self):
@@ -95,7 +96,9 @@ class InstallerComposefsBackendTests(unittest.TestCase):
         for image in images:
             self.assertIs(image.get("composefs"), True)
             self.assertIn("btrfs", image.get("filesystems", []))
-            self.assertIn("xfs", image.get("filesystems", []))
+            self.assertIn("ext4", image.get("filesystems", []))
+            # fisherman rejects composefs-backend on XFS: no fs-verity.
+            self.assertNotIn("xfs", image.get("filesystems", []))
 
     def test_configure_live_configures_composefs_payload(self):
         script = CONFIGURE_LIVE.read_text()

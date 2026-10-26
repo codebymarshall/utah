@@ -88,8 +88,13 @@ class InstallerComposefsBackendTests(unittest.TestCase):
 
     def test_images_json_enables_composefs(self):
         data = json.loads(IMAGES.read_text())
-        for image in data.get("images", []):
+        images = data.get("images", [])
+        self.assertTrue(images, "images.json lists no images")
+        for image in images:
             self.assertIs(image.get("composefs"), True)
+            self.assertNotIn("xfs", image.get("filesystems", []))
+            self.assertIn("ext4", image.get("filesystems", []))
+            self.assertIn("btrfs", image.get("filesystems", []))
 
 
 if __name__ == "__main__":

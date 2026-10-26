@@ -79,5 +79,18 @@ class InstallerFlatpakPathTests(unittest.TestCase):
                                  f"{path!r} is the flatpak dir; fisherman appends lib/flatpak itself")
 
 
+class InstallerComposefsBackendTests(unittest.TestCase):
+    """The installer should default to the composefs backend (#882)."""
+
+    def test_recipe_enables_composefs_backend(self):
+        data = json.loads(RECIPE.read_text())
+        self.assertIs(data.get("composeFsBackend"), True)
+
+    def test_images_json_enables_composefs(self):
+        data = json.loads(IMAGES.read_text())
+        for image in data.get("images", []):
+            self.assertIs(image.get("composefs"), True)
+
+
 if __name__ == "__main__":
     unittest.main()

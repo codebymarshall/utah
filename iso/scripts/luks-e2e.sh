@@ -688,7 +688,7 @@ cat > "${WORK}/recipe.json" <<EOF
   "filesystem": "btrfs",
   "image": "",
   "targetImgref": "${PAYLOAD_IMAGE}",
-  "composeFsBackend": false,
+  "composeFsBackend": true,
   "bootloader": "grub2",
   "hostname": "utah-luks-test",
   "encryption": {"type": "luks-passphrase", "passphrase": "${PASSPHRASE}"},

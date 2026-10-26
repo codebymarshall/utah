@@ -124,7 +124,7 @@ for path in (Path("/etc/bootc-installer/images.json"), Path("${SCRIPT_DIR}/etc/b
         data["image"] = ""
         data["local_imgref"] = f"containers-storage:{ref}"
         data["bootloader"] = "grub2"
-        data["composeFsBackend"] = False
+        data["composeFsBackend"] = True
     Path("/etc/bootc-installer" , path.name).write_text(json.dumps(data, indent=2) + "\n")
 PY
 touch /etc/bootc-installer/live-iso-mode

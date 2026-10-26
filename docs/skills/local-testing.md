@@ -1,7 +1,7 @@
 ---
 name: local-testing
 version: "1.0"
-last_updated: "2026-10-11"
+last_updated: "2026-10-26"
 id: local-testing
 one_line_purpose: Build, install, and boot Utah locally in a VM or live ISO.
 entry_point: docs/skills/local-testing.md
@@ -118,10 +118,8 @@ forever. Published images omit that argument and keep the service enabled.
 
 ## Live ISO (initial bring-up)
 
-The first ISO slice reuses Utah's own kernel, dracut-live, and GNOME image.
-`just iso` builds a single-architecture UEFI live ISO; this first slice proves
-the Utah live boot path, and installer payload integration is intentionally
-the next ISO milestone (comment above `iso` in `Justfile`):
+The live ISO path reuses Utah's own kernel, dracut-live, and GNOME image.
+`just iso` builds a single-architecture UEFI live ISO (comment above `iso` in `Justfile`):
 
 ```bash
 just iso testing
@@ -131,15 +129,13 @@ just measure-iso     # #875 squashfs size per store/compression strategy
 ```
 
 The result is `output/utah-live.iso`, assembled with systemd-boot, a
-`UTAH_LIVE` dmsquash-live root, and a serial `UTAH_LIVE_READY` marker. It is
-intended to prove live desktop boot first; bootc-installer/offline payload
-integration is the next ISO milestone. `luks-e2e.sh`'s live-boot gate asserts
-the `UTAH_LIVE_READY` marker on the serial console in addition to
-`graphical.target`, because the marker is written only by the
-`utah-live-ready.service` oneshot that runs after `display-manager.service`
-has started. `just boot-iso` boots it with QEMU-for-Docker and exposes the
-noVNC console at the printed URL (comment above `boot-iso` in `Justfile`),
-with TPM, UEFI, and `-snapshot` so nothing persists.
+`UTAH_LIVE` dmsquash-live root, and a serial `UTAH_LIVE_READY` marker.
+`luks-e2e.sh`'s live-boot gate asserts the `UTAH_LIVE_READY` marker on the
+serial console in addition to `graphical.target`, because the marker is written
+only by the `utah-live-ready.service` oneshot that runs after
+`display-manager.service` has started. `just boot-iso` boots it with
+QEMU-for-Docker and exposes the noVNC console at the printed URL (comment above
+`boot-iso` in `Justfile`), with TPM, UEFI, and `-snapshot` so nothing persists.
 
 ### Units that must stand down on live media
 
@@ -155,19 +151,13 @@ should be empty.
 
 ### Supported and unsupported boot paths
 
-- **UEFI x86_64 (Supported)**: The live ISO is built strictly for UEFI boot
-  using `systemd-boot` located at `EFI/BOOT/BOOTX64.EFI` on the FAT32 ESP.
+- **Supported boot paths**: The live ISO is built strictly for UEFI x86_64 boot
+  using `systemd-boot` at `EFI/BOOT/BOOTX64.EFI` on the FAT32 ESP.
   Dracut locates the live squashfs root via `root=live:LABEL=UTAH_LIVE`.
-  This is the only supported and tested live boot path.
-- **Legacy BIOS/CSM (Unsupported)**: Legacy MBR boot is unsupported. The ISO
-  omits MBR boot sectors and isolinux binaries.
-- **File-backed / Ventoy ISO loopback (Unsupported)**: Tools such as Ventoy
-  or GRUB loopback rely on initramfs hooks to mount the ISO container file from
-  a host filesystem before pivoting to the live root. Utah does not implement
-  custom dracut loopback handlers or a `rd.utah.isofile` locator; `loopback.cfg`
-  is deliberately omitted from the ISO to avoid advertising a non-functional
-  boot path. Media must be written directly to physical drives (e.g. via
-  Fedora Media Writer, `dd`, or balenaEtcher).
+- **Unsupported boot paths**: Legacy BIOS/CSM (MBR) and file-backed/Ventoy ISO
+  loopback are unsupported (`loopback.cfg` and MBR sectors are omitted). Media
+  must be written directly to physical drives (e.g. via Fedora Media Writer,
+  `dd`, or balenaEtcher).
 
 ### Kernel arguments and SELinux enforcement
 
@@ -239,6 +229,15 @@ or download and `sha256sum` it) rather than guessing or reusing an old value.
 a session bus (only OCI remotes reach for either), and `/var/tmp` (flatpak's OCI
 token cache, hardcoded, ignoring `$TMPDIR`; tmpfiles creates it on boot, but an
 image build never boots). All three bite only the OCI `tuna-os` remote.
+
+### Installer configuration and composefs backend
+
+The live ISO installer configuration (`iso/live/src/etc/bootc-installer/recipe.json`,
+`images.json`, and dynamically generated recipes in `configure-live.sh` and
+`iso/scripts/luks-e2e.sh`) defaults `composefs` and `composeFsBackend` to `true`
+(#882). This configures fisherman to install Utah deployments with composefs
+enabled by default, providing read-only root integrity verification and file
+deduplication on disk.
 
 ## Tacklebox ISOs (unpublished variants)
 

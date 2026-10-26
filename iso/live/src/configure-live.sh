@@ -121,7 +121,7 @@ for path in (Path("/etc/bootc-installer/images.json"), Path("${SCRIPT_DIR}/etc/b
     else:
         data["imgref"] = ref
         data["targetImgref"] = ref
-        data["image"] = ""
+        data["image"] = f"containers-storage:{ref}"
         data["local_imgref"] = f"containers-storage:{ref}"
         data["bootloader"] = "grub2"
         data["composeFsBackend"] = True

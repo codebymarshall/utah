@@ -671,10 +671,9 @@ echo "  live session type: ${live_session_type:-unknown}"
 shot_until_drawn live-desktop "${MONITOR_LIVE}"
 
 echo "=== Phase 3/7: install onto an encrypted disk ==="
-# An empty "image" with a "targetImgref" is the offline shape: fisherman then
-# installs from containers-storage rather than pulling, which is the only way
-# the ISO's embedded payload gets used. Naming the image directly makes it
-# pull, and the image this ISO carries was never published to a registry.
+# In composefs mode, fisherman requires an explicit source reference
+# (containers-storage:...) to export to an OCI directory layout before running
+# bootc install. targetImgref is preserved for day-2 updates.
 #
 # The user block is what phase 6 logs in as. Without it the installed system
 # has no account at all and the greeter has nobody to offer.
@@ -686,7 +685,7 @@ cat > "${WORK}/recipe.json" <<EOF
 {
   "disk": "/dev/vda",
   "filesystem": "btrfs",
-  "image": "",
+  "image": "containers-storage:${PAYLOAD_IMAGE}",
   "targetImgref": "${PAYLOAD_IMAGE}",
   "composeFsBackend": true,
   "bootloader": "grub2",

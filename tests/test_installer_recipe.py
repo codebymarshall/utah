@@ -14,6 +14,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RECIPE = ROOT / "iso/live/src/etc/bootc-installer/recipe.json"
 IMAGES = ROOT / "iso/live/src/etc/bootc-installer/images.json"
+CONFIGURE_LIVE = ROOT / "iso/live/src/configure-live.sh"
+LUKS_E2E = ROOT / "iso/scripts/luks-e2e.sh"
 CONTRACT = ROOT / "contracts/bluefin-desktop.toml"
 
 
@@ -95,6 +97,16 @@ class InstallerComposefsBackendTests(unittest.TestCase):
             self.assertNotIn("xfs", image.get("filesystems", []))
             self.assertIn("ext4", image.get("filesystems", []))
             self.assertIn("btrfs", image.get("filesystems", []))
+
+    def test_configure_live_configures_composefs_payload(self):
+        script = CONFIGURE_LIVE.read_text()
+        self.assertIn('data["composeFsBackend"] = True', script)
+        self.assertIn('data["image"] = f"containers-storage:{ref}"', script)
+
+    def test_luks_e2e_recipe_configures_composefs_payload(self):
+        script = LUKS_E2E.read_text()
+        self.assertIn('"composeFsBackend": true', script)
+        self.assertIn('"image": "containers-storage:${PAYLOAD_IMAGE}"', script)
 
 
 if __name__ == "__main__":

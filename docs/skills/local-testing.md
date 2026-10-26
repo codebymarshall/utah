@@ -155,9 +155,19 @@ should be empty.
 
 ### Supported and unsupported boot paths
 
-- **UEFI x86_64 (Supported)**: The live ISO is built strictly for UEFI boot using `systemd-boot` located at `EFI/BOOT/BOOTX64.EFI` on the FAT32 ESP. Dracut locates the live squashfs root via `root=live:LABEL=UTAH_LIVE`. This is the only supported and tested live boot path.
-- **Legacy BIOS/CSM (Unsupported)**: Legacy MBR boot is unsupported. The ISO omits MBR boot sectors and isolinux binaries.
-- **File-backed / Ventoy ISO loopback (Unsupported)**: Tools such as Ventoy or GRUB loopback rely on initramfs hooks to mount the ISO container file from a host filesystem before pivoting to the live root. Utah does not implement custom dracut loopback handlers or a `rd.utah.isofile` locator; `loopback.cfg` is deliberately omitted from the ISO to avoid advertising a non-functional boot path. Media must be written directly to physical drives (e.g. via Fedora Media Writer, `dd`, or balenaEtcher).
+- **UEFI x86_64 (Supported)**: The live ISO is built strictly for UEFI boot
+  using `systemd-boot` located at `EFI/BOOT/BOOTX64.EFI` on the FAT32 ESP.
+  Dracut locates the live squashfs root via `root=live:LABEL=UTAH_LIVE`.
+  This is the only supported and tested live boot path.
+- **Legacy BIOS/CSM (Unsupported)**: Legacy MBR boot is unsupported. The ISO
+  omits MBR boot sectors and isolinux binaries.
+- **File-backed / Ventoy ISO loopback (Unsupported)**: Tools such as Ventoy
+  or GRUB loopback rely on initramfs hooks to mount the ISO container file from
+  a host filesystem before pivoting to the live root. Utah does not implement
+  custom dracut loopback handlers or a `rd.utah.isofile` locator; `loopback.cfg`
+  is deliberately omitted from the ISO to avoid advertising a non-functional
+  boot path. Media must be written directly to physical drives (e.g. via
+  Fedora Media Writer, `dd`, or balenaEtcher).
 
 ### Kernel arguments and SELinux enforcement
 
@@ -215,20 +225,11 @@ calling the verifier there on an installed system fails with exit 127.
 so no target dependencies).
 
 `iso/live/src/install-flatpaks.sh` pins the bootc-installer Flatpak bundle to
-a specific `tuna-os/bootc-installer` release rather than resolving
-`/releases/latest/download/` the way dakota-iso does: the bundle installs
-system-wide with `--no-gpg-verify`, so the version pin is the whole trust
-story, and a fixed tag keeps ISO composition reproducible. Its releases are
-tagged by build date + commit sha (e.g. `v2026.09.19-cee9ba29`), not semver,
-so there is no tag-name continuity to lean on when bumping it.
-`UTAH_INSTALLER_VERSION` and `UTAH_INSTALLER_SHA256` must move together —
-take the digest from that release's `org.bootcinstaller.Installer.flatpak`
-asset (`digest` field of `gh api repos/tuna-os/bootc-installer/releases/tags/<tag>`,
-or download and `sha256sum` it) rather than guessing or reusing an old value.
-`install-flatpaks.sh` also shims the container-build environment: a machine id,
-a session bus (only OCI remotes reach for either), and `/var/tmp` (flatpak's OCI
-token cache, hardcoded, ignoring `$TMPDIR`; tmpfiles creates it on boot, but an
-image build never boots). All three bite only the OCI `tuna-os` remote.
+a specific `tuna-os/bootc-installer` release with `--no-gpg-verify`; a fixed tag
+keeps ISO composition reproducible. Releases are tagged by build date and commit
+sha (`UTAH_INSTALLER_VERSION` and `UTAH_INSTALLER_SHA256` move together from the
+`org.bootcinstaller.Installer.flatpak` asset). `install-flatpaks.sh` also shims
+machine id, session bus, and the `/var/tmp` token cache during image build.
 
 ### Installer configuration and composefs backend
 
@@ -479,6 +480,9 @@ this does not enable autologin or alter the published image's login policy.
 
 ```bash
 just lifecycle-test ghcr.io/projectbluefin/utah@sha256:<candidate-digest>
+```
+
+```bash
 just check
 ```
 

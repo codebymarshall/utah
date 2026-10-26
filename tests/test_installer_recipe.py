@@ -94,9 +94,8 @@ class InstallerComposefsBackendTests(unittest.TestCase):
         self.assertTrue(images, "images.json lists no images")
         for image in images:
             self.assertIs(image.get("composefs"), True)
-            self.assertNotIn("xfs", image.get("filesystems", []))
-            self.assertIn("ext4", image.get("filesystems", []))
             self.assertIn("btrfs", image.get("filesystems", []))
+            self.assertIn("xfs", image.get("filesystems", []))
 
     def test_configure_live_configures_composefs_payload(self):
         script = CONFIGURE_LIVE.read_text()

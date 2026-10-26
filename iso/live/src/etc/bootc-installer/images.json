@@ -11,7 +11,7 @@
       "filesystem": "btrfs",
       "composefs": true,
       "needs_user_creation": false,
-      "filesystems": ["btrfs", "ext4"]
+      "filesystems": ["btrfs", "xfs"]
     }
   ]
 }

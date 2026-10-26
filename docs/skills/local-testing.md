@@ -226,10 +226,10 @@ so no target dependencies).
 
 `iso/live/src/install-flatpaks.sh` pins the bootc-installer Flatpak bundle to
 a specific `tuna-os/bootc-installer` release with `--no-gpg-verify`; a fixed tag
-keeps ISO composition reproducible. Releases are tagged by build date and commit
-sha (`UTAH_INSTALLER_VERSION` and `UTAH_INSTALLER_SHA256` move together from the
-`org.bootcinstaller.Installer.flatpak` asset). `install-flatpaks.sh` also shims
-machine id, session bus, and the `/var/tmp` token cache during image build.
+keeps ISO composition reproducible. For operator guidance on bumping the pin and
+asset digest, see [iso-review](local-testing/references/iso-review.md#bumping-bootc-installer).
+`install-flatpaks.sh` also shims machine id, session bus, and the `/var/tmp`
+token cache during image build.
 
 ### Installer configuration and composefs backend
 

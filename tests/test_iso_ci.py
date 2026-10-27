@@ -222,6 +222,21 @@ class EvidenceTests(unittest.TestCase):
         self.assertRegex(validated, r"^[0-9a-f]{40}$")
         self.assertEqual(gated, validated)
 
+    def test_testsuite_checkout_matches_the_pinned_workflow_commit(self):
+        # Workflow logic and checked-out tests must come from one testsuite
+        # revision (#946); Renovate moves the uses: digest and test refs together.
+        import yaml
+        e2e = yaml.safe_load((ROOT / ".github/workflows/post-testing-e2e.yml").read_text())
+        job = e2e["jobs"]["testsuite"]
+        workflow_sha = job["uses"].rpartition("@")[2]
+        self.assertEqual(job["with"]["test_ref"], workflow_sha)
+        manager = next(m for m in json.loads((ROOT / "renovate.json").read_text())["customManagers"]
+                       if m.get("depNameTemplate") == "projectbluefin/testsuite")
+        for name in ["post-testing-e2e", "execute-release"]:
+            text = (ROOT / f".github/workflows/{name}.yml").read_text()
+            pattern = re.sub(r"\(\?<(\w+)>", "(?P<\\1>", manager["matchStrings"][0])
+            self.assertEqual(re.search(pattern, text)["currentDigest"], workflow_sha, name)
+
     def test_build_explicitly_dispatches_iso_after_both_image_jobs(self):
         import yaml
         build = yaml.safe_load((ROOT / ".github/workflows/build.yml").read_text())
@@ -243,7 +258,8 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(update(result, proof), result)
         self.assertIn("Keep this paragraph.", result)
         self.assertIn("actions/runs/123", result)
-        self.assertIn("may show a failure in independent tests", result)
+        self.assertIn("independent desktop tests that do not gate this record", result)
+        self.assertNotIn("failure", result)
         self.assertIn("the LUKS and production ISO jobs passed", result)
 
     def test_production_iso_artifacts_follow_the_full_luks_matrix(self):

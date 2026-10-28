@@ -69,7 +69,7 @@
       ],
       "description": "Diagnose a running Utah machine using its shipped context and installed tool inventory.",
       "version": "1.0",
-      "last_updated": "2026-10-26",
+      "last_updated": "2026-10-28",
       "doc_type": "procedure"
     },
     {
